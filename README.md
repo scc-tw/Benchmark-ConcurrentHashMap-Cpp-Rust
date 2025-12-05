@@ -178,24 +178,71 @@ make -j$(nproc)
 cd rust-impl && cargo build --release
 ```
 
-### Running Experiments
+### Validation
+
+Run validation suite to verify cross-implementation consistency:
 
 ```bash
-# Run full benchmark suite
-./scripts/run-experiments.sh
+# Run all validations
+./scripts/validation/run_all_validations.sh
 
-# Run specific scenario
-./build/bench-phmap --scenario read_only --threads 8 --mapsize 1000000 --repeats 40 --pinning compact
+# Individual validations
+./scripts/validation/validate_prng.sh      # PRNG sequence match
+./scripts/validation/validate_hash.sh      # Hash function match
+./scripts/validation/validate_csv.sh       # CSV format consistency
+./scripts/validation/validate_scenarios.sh # All scenarios execute
+./scripts/validation/validate_memory.sh    # Memory measurements valid
+```
+
+### Running Individual Benchmarks
+
+```bash
+# parallel-hashmap benchmark
+./build/cpp-impl/bench-phmap --scenario read_only --threads 8 --mapsize 1000000 --repeats 40 --pinning compact
+
+# libcuckoo benchmark
+./build/cpp-impl/bench-libcuckoo --scenario read_only --threads 8 --mapsize 1000000 --repeats 40 --pinning compact
+
+# DashMap benchmark
+./rust-impl/target/release/bench-dashmap --scenario read_only --threads 8 --mapsize 1000000 --repeats 40 --pinning compact
 
 # Verify PRNG consistency
-./build/bench-phmap --verify-prng --seed 42 > cpp_prng.txt
-./rust-impl/target/release/bench-dashmap --verify-prng --seed 42 > rust_prng.txt
-diff cpp_prng.txt rust_prng.txt
+./build/cpp-impl/bench-phmap --verify-prng --seed 42
+./rust-impl/target/release/bench-dashmap --verify-prng --seed 42
+
+# Verify hash consistency
+./build/cpp-impl/bench-phmap --verify-hash
+./rust-impl/target/release/bench-dashmap --verify-hash
+```
+
+### Running Full Experiment Suite
+
+```bash
+# Full benchmark (estimated 24-36 hours)
+./scripts/run-experiments.sh
+
+# Quick test run (reduced matrix, ~30 minutes)
+./scripts/run-experiments.sh --quick
+
+# Dry run (show experiment matrix without executing)
+./scripts/run-experiments.sh --dry-run
+
+# Single implementation only
+./scripts/run-experiments.sh --single-impl dashmap
+
+# Single scenario only
+./scripts/run-experiments.sh --single-scenario read_only
+
+# Resume interrupted run
+./scripts/run-experiments.sh --resume
+
+# Full pipeline (validation + experiments + aggregation + plots)
+./scripts/run-full-pipeline.sh --quick
 ```
 
 ### Output Format
 
-**Per-trial CSV:**
+**Per-trial CSV (27 columns):**
 ```
 run_id,map_name,map_version,scenario,thread_count,map_size,ops_per_trial,
 repeat_index,seed,core_mapping,duration_ns,ops_per_sec,mean_sample_latency_ns,
@@ -204,20 +251,18 @@ sampled_ops_count,peak_rss_kb,current_rss_kb,bytes_per_entry,overhead_ratio,
 numa_nodes,pinning_strategy,allocation_node,notes
 ```
 
-**Latency samples CSV:**
-```
-op_index,thread_id,latency_ns
-```
-
 **System metadata JSON:**
 ```json
 {
+  "timestamp": "...",
+  "hostname": "...",
+  "kernel": "...",
   "cpu_model": "...",
-  "numa_nodes": 2,
-  "cores_per_node": 16,
-  "kernel_version": "...",
-  "compiler_versions": {...},
-  "build_flags": {...}
+  "cpu_cores": 16,
+  "numa_nodes": 1,
+  "gcc_version": "...",
+  "rustc_version": "...",
+  "experiment_config": {...}
 }
 ```
 
@@ -226,20 +271,37 @@ op_index,thread_id,latency_ns
 ### Aggregating Results
 
 ```bash
-# Compute mean, std dev, and 95% CI from raw trials
-python scripts/aggregate-results.py results/raw/*.csv > results/aggregated/summary.csv
+# Aggregate raw trials into summary statistics
+python3 scripts/aggregate-results.py
+
+# With verbose output
+python3 scripts/aggregate-results.py -v
+
+# Custom input/output
+python3 scripts/aggregate-results.py --input results/raw --output results/aggregated/summary.csv
+```
+
+### Quick Analysis
+
+```bash
+# Generate summary report
+python3 scripts/quick-analysis.py
 ```
 
 ### Plotting
+
+Requires gnuplot 5.0+:
 
 ```bash
 # Generate all plots
 ./scripts/generate-plots.sh
 
-# Individual plots
-gnuplot plots/plot-throughput.gnu
-gnuplot plots/plot-latency-cdf.gnu
-gnuplot plots/plot-scalability.gnu
+# Individual plots with parameters
+gnuplot -e "scenario='read_only'; mapsize=1000000; pinning='compact'" plots/plot-throughput.gnu
+gnuplot -e "scenario='insert_only'; mapsize=1000000; pinning='compact'" plots/plot-scalability.gnu
+gnuplot -e "scenario='read_only'; threads=8; mapsize=1000000; pinning='compact'" plots/plot-latency.gnu
+gnuplot -e "threads=1; pinning='compact'" plots/plot-memory.gnu
+gnuplot -e "threads=8; mapsize=1000000; pinning='compact'" plots/plot-comparison.gnu
 ```
 
 ## Results
@@ -286,14 +348,8 @@ gnuplot plots/plot-scalability.gnu
 
 ```
 .
-├── BENCHMARK_DESIGN.md       # Detailed methodology and design rationale
-├── PLAN.md                   # Implementation plan
 ├── README.md                 # This file
 ├── CMakeLists.txt            # Root CMake configuration
-│
-├── deps/                     # C++ dependencies (fetched by CMake)
-│   ├── parallel-hashmap/
-│   └── libcuckoo/
 │
 ├── common/                   # Shared C++ headers
 │   ├── config.h              # Constants and configuration
@@ -308,33 +364,52 @@ gnuplot plots/plot-scalability.gnu
 │
 ├── cpp-impl/                 # C++ benchmark implementations
 │   ├── CMakeLists.txt
-│   ├── bench-phmap.cpp
-│   └── bench-libcuckoo.cpp
+│   ├── bench-phmap.cpp       # parallel-hashmap benchmark
+│   └── bench-libcuckoo.cpp   # libcuckoo benchmark
 │
 ├── rust-impl/                # Rust benchmark implementation
 │   ├── Cargo.toml
 │   └── src/
-│       ├── main.rs
-│       ├── prng.rs
-│       ├── hasher.rs
-│       ├── scenarios.rs
-│       ├── affinity.rs
-│       └── memory.rs
+│       ├── main.rs           # Entry point and CLI
+│       ├── prng.rs           # xorshift64* implementation
+│       ├── hasher.rs         # Custom fast hasher
+│       ├── scenarios.rs      # Benchmark scenarios
+│       ├── affinity.rs       # Thread pinning
+│       ├── memory.rs         # RSS measurement
+│       └── numa.rs           # NUMA topology detection
 │
 ├── scripts/                  # Automation scripts
-│   ├── run-experiments.sh
-│   ├── aggregate-results.py
-│   └── generate-plots.sh
+│   ├── run-experiments.sh    # Experiment orchestration
+│   ├── run-full-pipeline.sh  # End-to-end automation
+│   ├── aggregate-results.py  # Statistical aggregation
+│   ├── generate-plots.sh     # Plot generation wrapper
+│   ├── quick-analysis.py     # Summary report generator
+│   └── validation/           # Cross-implementation validation
+│       ├── run_all_validations.sh
+│       ├── validate_prng.sh
+│       ├── validate_hash.sh
+│       ├── validate_csv.sh
+│       ├── validate_scenarios.sh
+│       └── validate_memory.sh
 │
 ├── plots/                    # Gnuplot scripts
-│   ├── plot-throughput.gnu
-│   ├── plot-latency-cdf.gnu
-│   └── plot-scalability.gnu
+│   ├── plot-throughput.gnu   # Throughput vs thread count
+│   ├── plot-scalability.gnu  # Normalized speedup
+│   ├── plot-latency.gnu      # Latency percentiles
+│   ├── plot-memory.gnu       # Memory efficiency
+│   └── plot-comparison.gnu   # Multi-scenario comparison
 │
-└── results/                  # Output directory (generated)
-    ├── raw/
-    ├── aggregated/
-    └── plots/
+├── build/                    # Build output (generated)
+│   └── cpp-impl/
+│       ├── bench-phmap
+│       └── bench-libcuckoo
+│
+└── results/                  # Benchmark output (generated)
+    ├── raw/                  # Per-trial CSV files
+    ├── aggregated/           # Summary statistics
+    ├── plots/                # Generated PNG plots
+    ├── logs/                 # Execution logs
+    └── system_metadata.json  # System configuration
 ```
 
 ## Limitations & Scope
