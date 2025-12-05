@@ -68,7 +68,7 @@ fn verify_prng_sequence(seed: u64) {
 }
 
 fn verify_hash_values() {
-    println!("Hasher verification:");
+    println!("Hash verification:");
     println!("hash(0) = {}", hash_u64(0));
     println!("hash(1) = {}", hash_u64(1));
     println!("hash(42) = {}", hash_u64(42));

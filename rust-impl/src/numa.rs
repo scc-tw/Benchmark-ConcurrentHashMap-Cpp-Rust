@@ -33,6 +33,7 @@ pub struct NumaTopology {
 }
 
 impl NumaTopology {
+    #[allow(dead_code)]
     pub fn total_cores(&self) -> usize {
         self.node_cores.iter().map(|v| v.len()).sum()
     }

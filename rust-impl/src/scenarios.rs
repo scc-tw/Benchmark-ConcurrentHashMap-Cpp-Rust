@@ -10,18 +10,23 @@ use std::time::Instant;
 
 // Constants (must match C++)
 pub const OPS_PER_TRIAL: u64 = 1_000_000;
+#[allow(dead_code)]
 pub const WARMUP_OPS: u64 = 100_000;
 pub const SAMPLE_INTERVAL: u64 = 1000;
 pub const REPEATS: usize = 40;
 
+#[allow(dead_code)]
 pub const SIZE_SMALL: u64 = 100_000;
 pub const SIZE_MEDIUM: u64 = 1_000_000;
+#[allow(dead_code)]
 pub const SIZE_LARGE: u64 = 10_000_000;
 
 /// Latency sample from a single operation
 #[derive(Debug, Clone)]
 pub struct LatencySample {
+    #[allow(dead_code)]
     pub op_index: u64,
+    #[allow(dead_code)]
     pub thread_id: usize,
     pub latency_ns: i64,
 }
@@ -72,6 +77,7 @@ impl LatencyStats {
 pub type ConcurrentMap = DashMap<u64, u64, BuildFastHasher>;
 
 /// Create a new map with custom hasher
+#[allow(dead_code)]
 pub fn new_map() -> ConcurrentMap {
     DashMap::with_hasher(BuildFastHasher)
 }
