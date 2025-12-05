@@ -346,7 +346,7 @@ include(FetchContent)
 FetchContent_Declare(
     parallel-hashmap
     GIT_REPOSITORY https://github.com/greg7mdp/parallel-hashmap.git
-    GIT_TAG        v1.3.11
+    GIT_TAG        v2.0.0
 )
 
 FetchContent_Declare(
@@ -419,10 +419,10 @@ target_link_libraries(bench-libcuckoo pthread)
 [package]
 name = "bench-dashmap"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-dashmap = "5"
+dashmap = "6"
 libc = "0.2"
 clap = { version = "4", features = ["derive"] }
 
