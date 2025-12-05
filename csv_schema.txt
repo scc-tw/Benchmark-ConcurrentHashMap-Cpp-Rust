@@ -1,0 +1,5 @@
+CSV schema for per-trial raw results (header):
+run_id,map_name,map_version,scenario,thread_count,map_size,ops_per_trial,repeat_index,seed,core_mapping,duration_ns,ops_per_sec,mean_sample_latency_ns,median_sample_latency_ns,p50_latency_ns,p90_latency_ns,p95_latency_ns,p99_latency_ns,max_sample_latency_ns,sampled_ops_count,peak_rss_kb,notes
+
+latencies CSV (per-run, sampled ops):
+op_index,thread_id,latency_ns
