@@ -21,7 +21,8 @@ class ZipfGenerator {
     double s_minus_1_;
 
     // Compute H(x) = integral of x^(-s) from 1 to x
-    double h_integral(double x) const {
+    [[nodiscard]]
+    double h_integral(double x) const noexcept {
         if (s_ == 1.0) {
             return std::log(x);
         }
@@ -29,7 +30,8 @@ class ZipfGenerator {
     }
 
     // Inverse of h_integral
-    double h_integral_inv(double y) const {
+    [[nodiscard]]
+    double h_integral_inv(double y) const noexcept {
         if (s_ == 1.0) {
             return std::exp(y);
         }
@@ -45,7 +47,8 @@ public:
     }
 
     // Generate next Zipfian-distributed value in [0, n)
-    uint64_t next() {
+    [[nodiscard]]
+    uint64_t next() noexcept {
         while (true) {
             // Generate uniform random in [0, 1)
             double u = static_cast<double>(xorshift64star(&prng_state_))

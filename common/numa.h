@@ -6,6 +6,7 @@
 #include <sstream>
 #include <dirent.h>
 #include <cstdint>
+#include <algorithm> // for std::max
 
 namespace bench {
 
@@ -18,7 +19,8 @@ struct NumaTopology {
     int num_nodes = 1;
     std::vector<std::vector<int>> node_cores;  // node_cores[node] = {core_ids}
 
-    int total_cores() const {
+    [[nodiscard]]
+    int total_cores() const noexcept {
         int total = 0;
         for (const auto& cores : node_cores) {
             total += static_cast<int>(cores.size());
@@ -28,6 +30,7 @@ struct NumaTopology {
 };
 
 // Parse CPU list format "0-3,8-11" into vector of core IDs
+[[nodiscard]]
 inline std::vector<int> parse_cpulist(const std::string& cpulist) {
     std::vector<int> cores;
     std::stringstream ss(cpulist);
@@ -49,6 +52,7 @@ inline std::vector<int> parse_cpulist(const std::string& cpulist) {
 }
 
 // Detect NUMA topology from /sys filesystem
+[[nodiscard]]
 inline NumaTopology detect_numa() {
     NumaTopology topo;
     const std::string base = "/sys/devices/system/node/";
@@ -87,10 +91,23 @@ inline NumaTopology detect_numa() {
     closedir(dir);
 
     topo.num_nodes = static_cast<int>(topo.node_cores.size());
+
+    // Ensure at least one node exists if detection failed but dir existed
+    if (topo.num_nodes == 0) {
+        topo.num_nodes = 1;
+        topo.node_cores.resize(1);
+        // Try fallback to online cpus
+         std::ifstream online("/sys/devices/system/cpu/online");
+        std::string cpulist;
+        if (std::getline(online, cpulist)) {
+            topo.node_cores[0] = parse_cpulist(cpulist);
+        }
+    }
     return topo;
 }
 
 // Get core IDs for given strategy and thread count
+[[nodiscard]]
 inline std::vector<int> get_cores(const NumaTopology& topo,
                                    PinningStrategy strategy,
                                    int num_threads) {
@@ -129,7 +146,8 @@ inline std::vector<int> get_cores(const NumaTopology& topo,
 }
 
 // Convert strategy to string for CSV output
-inline const char* strategy_to_string(PinningStrategy strategy) {
+[[nodiscard]]
+inline const char* strategy_to_string(PinningStrategy strategy) noexcept {
     switch (strategy) {
         case PinningStrategy::COMPACT: return "compact";
         case PinningStrategy::SPREAD:  return "spread";

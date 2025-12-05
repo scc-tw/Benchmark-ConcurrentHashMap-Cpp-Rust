@@ -42,7 +42,7 @@ struct WorkerContext {
 };
 
 // Pin current thread to specific core
-inline void pin_thread(int core_id) {
+inline void pin_thread(int core_id) noexcept {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(core_id, &cpuset);
@@ -50,16 +50,21 @@ inline void pin_thread(int core_id) {
 }
 
 // Compute per-thread operation count
-inline uint64_t ops_per_thread(int num_threads) {
+[[nodiscard]]
+constexpr inline uint64_t ops_per_thread(int num_threads) noexcept {
+    if (num_threads <= 0) return 0;
     return OPS_PER_TRIAL / static_cast<uint64_t>(num_threads);
 }
 
 // Compute per-thread warmup operation count
-inline uint64_t warmup_per_thread(int num_threads) {
+[[nodiscard]]
+constexpr inline uint64_t warmup_per_thread(int num_threads) noexcept {
+    if (num_threads <= 0) return 0;
     return WARMUP_OPS / static_cast<uint64_t>(num_threads);
 }
 
 // Initialize worker contexts for a benchmark run
+[[nodiscard]]
 inline std::vector<WorkerContext> create_workers(
     int num_threads,
     const std::vector<int>& core_ids,

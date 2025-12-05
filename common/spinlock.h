@@ -30,8 +30,8 @@ public:
     class Guard {
         SpinLock& lock_;
     public:
-        explicit Guard(SpinLock& lock) : lock_(lock) { lock_.lock(); }
-        ~Guard() { lock_.unlock(); }
+        explicit Guard(SpinLock& lock) noexcept : lock_(lock) { lock_.lock(); }
+        ~Guard() noexcept { lock_.unlock(); }
         Guard(const Guard&) = delete;
         Guard& operator=(const Guard&) = delete;
     };

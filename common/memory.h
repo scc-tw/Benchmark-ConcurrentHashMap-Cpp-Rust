@@ -7,6 +7,7 @@
 namespace bench {
 
 // Get peak resident set size in KB (VmHWM = High Water Mark)
+[[nodiscard]]
 inline int64_t get_peak_rss_kb() {
     std::ifstream status("/proc/self/status");
     std::string line;
@@ -24,6 +25,7 @@ inline int64_t get_peak_rss_kb() {
 }
 
 // Get current resident set size in KB
+[[nodiscard]]
 inline int64_t get_current_rss_kb() {
     std::ifstream status("/proc/self/status");
     std::string line;
@@ -40,13 +42,16 @@ inline int64_t get_current_rss_kb() {
 }
 
 // Compute bytes per entry
-inline double bytes_per_entry(int64_t rss_kb, uint64_t num_entries) {
+[[nodiscard]]
+inline double bytes_per_entry(int64_t rss_kb, uint64_t num_entries) noexcept {
+    if (num_entries == 0) return 0.0;
     return (static_cast<double>(rss_kb) * 1024.0) / static_cast<double>(num_entries);
 }
 
 // Compute overhead ratio (actual / theoretical minimum)
 // Theoretical minimum for uint64_t key + uint64_t value = 16 bytes
-inline double overhead_ratio(int64_t rss_kb, uint64_t num_entries) {
+[[nodiscard]]
+inline double overhead_ratio(int64_t rss_kb, uint64_t num_entries) noexcept {
     double actual = bytes_per_entry(rss_kb, num_entries);
     return actual / 16.0;
 }
