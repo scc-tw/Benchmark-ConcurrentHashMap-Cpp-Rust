@@ -38,6 +38,26 @@ Each experimental configuration is repeated **R = 40** times to enable CLT-based
 | Optimizations | `-O3 -march=native -flto` | Local CMake build for C++ |
 | Thread pinning | `pthread_setaffinity_np` | Controlled core assignment |
 
+### Implementation Configurations
+
+| Map | Type | Shards | Lock Type |
+|-----|------|--------|-----------|
+| parallel-hashmap | `parallel_flat_hash_map<..., 4, SpinLock>` | 16 (2^4) | Spinlock (atomic) |
+| libcuckoo | `cuckoohash_map` | Variable | Fine-grained spinlock |
+| DashMap | `DashMap` | num_cpus×4 | RwLock (spin + park) |
+
+**Note:** `phmap::flat_hash_map` is NOT thread-safe. This benchmark uses `parallel_flat_hash_map` with a custom `SpinLock` (atomic_flag based, no syscalls).
+
+**Lock primitive rationale:**
+- Hash map operations have short critical sections (~50-200ns)
+- std::mutex involves futex syscalls (~10x overhead)
+- All implementations use spin-based locking for short critical sections
+
+**Architectural differences:**
+- DashMap uses RwLock (read-read parallelism possible)
+- parallel-hashmap uses exclusive spinlock (serializes all access per submap)
+- These differences affect read-heavy scenario results
+
 ### Timing Infrastructure
 
 - **Timing source**: `clock_gettime(CLOCK_MONOTONIC_RAW, ...)` for NTP-independent measurements
@@ -280,6 +300,7 @@ gnuplot plots/plot-scalability.gnu
 │   ├── prng.h                # xorshift64* implementation
 │   ├── timing.h              # clock_gettime wrappers
 │   ├── hasher.h              # Custom fast hasher
+│   ├── spinlock.h            # Lightweight spinlock (atomic_flag)
 │   ├── zipf.h                # Zipfian distribution
 │   ├── worker.h              # Thread worker infrastructure
 │   ├── memory.h              # RSS measurement utilities

@@ -98,6 +98,7 @@ rustflags = ["-C", "target-cpu=native"]
 │   ├── prng.h                # xorshift64* implementation
 │   ├── timing.h              # clock_gettime wrappers
 │   ├── hasher.h              # Custom fast hasher
+│   ├── spinlock.h            # Lightweight spinlock (atomic_flag)
 │   ├── zipf.h                # Zipfian distribution
 │   ├── config.h              # Constants and configuration
 │   ├── worker.h              # Thread worker infrastructure
@@ -191,11 +192,77 @@ impl Hasher for FastHasher {
 
 ### Map Configuration
 
-| Map | Custom Hasher | Initial Capacity |
-|-----|---------------|------------------|
-| parallel-hashmap | `phmap::flat_hash_map<K,V,FastHasher>` | `reserve(map_size)` |
-| libcuckoo | `cuckoohash_map<K,V,FastHasher>` | `reserve(map_size)` |
-| DashMap | `DashMap<K,V,BuildHasherDefault<FastHasher>>` | `with_capacity(map_size)` |
+| Map | Type | Shards | Lock Type | Initial Capacity |
+|-----|------|--------|-----------|------------------|
+| parallel-hashmap | `parallel_flat_hash_map<K,V,H,E,A,4,SpinLock>` | 16 (2^4) | Spinlock (atomic) | `reserve(map_size)` |
+| libcuckoo | `cuckoohash_map<K,V,FastHasher>` | Variable | Fine-grained spinlock | `reserve(map_size)` |
+| DashMap | `DashMap<K,V,BuildHasherDefault<FastHasher>>` | num_cpus×4 | RwLock (spin + park) | `with_capacity(map_size)` |
+
+**SpinLock implementation (common/spinlock.h):**
+```cpp
+#pragma once
+#include <atomic>
+
+// Lightweight spinlock for short critical sections
+// Avoids syscall overhead of std::mutex (~10x faster uncontended)
+class SpinLock {
+    std::atomic_flag flag_ = ATOMIC_FLAG_INIT;
+public:
+    void lock() noexcept {
+        while (flag_.test_and_set(std::memory_order_acquire)) {
+            #if defined(__x86_64__) || defined(_M_X64)
+            __builtin_ia32_pause();  // Reduce power, improve HT performance
+            #elif defined(__aarch64__)
+            __asm__ volatile("yield");
+            #endif
+        }
+    }
+
+    void unlock() noexcept {
+        flag_.clear(std::memory_order_release);
+    }
+};
+```
+
+**parallel-hashmap instantiation:**
+```cpp
+#include <parallel_hashmap/phmap.h>
+#include "spinlock.h"
+
+using ConcurrentMap = phmap::parallel_flat_hash_map<
+    uint64_t,                                              // Key
+    uint64_t,                                              // Value
+    FastHasher,                                            // Hash
+    phmap::priv::hash_default_eq<uint64_t>,               // Eq
+    std::allocator<std::pair<const uint64_t, uint64_t>>,  // Allocator
+    4,                                                     // N (2^4 = 16 submaps)
+    SpinLock                                               // Lightweight spinlock
+>;
+```
+
+**Rationale for SpinLock over std::mutex:**
+- Hash map operations have short critical sections (~50-200ns)
+- std::mutex involves futex syscalls on contention (~10x overhead)
+- SpinLock: pure atomic operations, no syscalls
+- All three implementations use spin-based locking internally
+
+**Note:** `phmap::flat_hash_map` is NOT thread-safe. Must use `parallel_flat_hash_map` with a mutex type for concurrent access.
+
+### Implementation Characteristics
+
+| Characteristic | parallel-hashmap | libcuckoo | DashMap |
+|----------------|------------------|-----------|---------|
+| Concurrency model | Sharded with spinlock | Bucket striping | Sharded with RwLock |
+| Read-read parallelism | No (exclusive lock) | Limited | Yes (RwLock) |
+| Lock primitive | atomic_flag spinlock | Fine-grained spinlock | parking_lot (spin + park) |
+| Shard selection | `(hash ^ (hash >> 4)) & mask` | Dual hash | Internal FxHash |
+| Resize granularity | Per-submap (1/16 at a time) | Global | Per-shard |
+| Base memory overhead | ~768 bytes (N=4 + 16 bytes spinlock) | Variable | Variable |
+
+**Architectural implications:**
+- Read-heavy scenarios (read_only, read_majority): DashMap's RwLock enables read-read parallelism; phmap's mutex serializes all access per submap
+- Write-heavy scenarios (insert_only, resize_stress): All implementations serialize writes per shard/bucket
+- These are architectural differences, not benchmark artifacts
 
 ## Workload Scenarios
 
@@ -528,6 +595,7 @@ add_subdirectory(cpp-impl)
 - [ ] `common/prng.h` - xorshift64* implementation
 - [ ] `common/timing.h` - clock_gettime wrappers
 - [ ] `common/hasher.h` - Custom fast hasher
+- [ ] `common/spinlock.h` - Lightweight spinlock (atomic_flag based)
 - [ ] `common/zipf.h` - Zipfian distribution generator
 - [ ] `common/worker.h` - Thread worker infrastructure with barriers
 - [ ] `common/memory.h` - RSS measurement utilities
