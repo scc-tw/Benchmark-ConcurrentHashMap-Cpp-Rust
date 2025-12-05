@@ -100,7 +100,9 @@ rustflags = ["-C", "target-cpu=native"]
 │   ├── hasher.h              # Custom fast hasher
 │   ├── zipf.h                # Zipfian distribution
 │   ├── config.h              # Constants and configuration
-│   └── worker.h              # Thread worker infrastructure
+│   ├── worker.h              # Thread worker infrastructure
+│   ├── memory.h              # RSS measurement utilities
+│   └── numa.h                # NUMA topology detection
 │
 ├── cpp-impl/                 # C++ benchmark implementations
 │   ├── CMakeLists.txt
@@ -114,7 +116,8 @@ rustflags = ["-C", "target-cpu=native"]
 │       ├── prng.rs           # xorshift64* (must match C++)
 │       ├── hasher.rs         # Custom hasher (must match C++)
 │       ├── scenarios.rs      # Workload implementations
-│       └── affinity.rs       # Thread pinning via libc
+│       ├── affinity.rs       # Thread pinning via libc
+│       └── memory.rs         # RSS measurement utilities
 │
 ├── scripts/                  # Automation scripts
 │   ├── run-experiments.sh    # Main experiment driver
@@ -297,6 +300,163 @@ def compute_ci95(samples):
     return mean, std, ci95
 ```
 
+## Memory Efficiency Measurement
+
+### Methodology
+
+Memory efficiency is measured at three levels:
+
+1. **Peak RSS (Resident Set Size)**: Captured via `/proc/<pid>/status` at end of each trial
+2. **Memory per Entry**: `peak_rss_kb / map_size` normalized metric
+3. **Memory Overhead Ratio**: `actual_memory / theoretical_minimum` where theoretical = `map_size * 16` bytes (key + value)
+
+### Measurement Points
+
+| Map Size | Theoretical Min | Measurement |
+|----------|-----------------|-------------|
+| 100K | 1.6 MB | After full population |
+| 1M | 16 MB | After full population |
+| 10M | 160 MB | After full population |
+
+### Implementation
+
+```cpp
+// common/memory.h
+#include <fstream>
+#include <string>
+
+inline int64_t get_peak_rss_kb() {
+    std::ifstream status("/proc/self/status");
+    std::string line;
+    while (std::getline(status, line)) {
+        if (line.rfind("VmHWM:", 0) == 0) {  // High Water Mark
+            return std::stoll(line.substr(6));
+        }
+    }
+    return -1;
+}
+
+inline int64_t get_current_rss_kb() {
+    std::ifstream status("/proc/self/status");
+    std::string line;
+    while (std::getline(status, line)) {
+        if (line.rfind("VmRSS:", 0) == 0) {
+            return std::stoll(line.substr(6));
+        }
+    }
+    return -1;
+}
+```
+
+```rust
+// rust-impl/src/memory.rs
+use std::fs;
+
+pub fn get_peak_rss_kb() -> i64 {
+    fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("VmHWM:"))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|v| v.parse().ok())
+        })
+        .unwrap_or(-1)
+}
+```
+
+### Memory Efficiency Metrics in CSV
+
+Additional columns in output:
+```
+peak_rss_kb,current_rss_kb,bytes_per_entry,overhead_ratio
+```
+
+## NUMA Topology Benchmarking
+
+### Objective
+
+Quantify NUMA effects on concurrent hash map performance by measuring throughput under different thread-to-core mappings.
+
+### NUMA Detection
+
+```cpp
+// common/numa.h
+#include <numa.h>
+
+struct NumaTopology {
+    int num_nodes;
+    int cores_per_node;
+    std::vector<std::vector<int>> node_cores;  // node_cores[node] = {core_ids}
+};
+
+NumaTopology detect_numa() {
+    NumaTopology topo;
+    topo.num_nodes = numa_num_configured_nodes();
+    // ... populate node_cores from /sys/devices/system/node/
+    return topo;
+}
+```
+
+### Pinning Strategies (Experimental Variable)
+
+| Strategy | Description | Expected Effect |
+|----------|-------------|-----------------|
+| `compact` | All threads on node 0, consecutive cores | Maximum cache sharing, limited memory bandwidth |
+| `spread` | Round-robin across nodes | Higher aggregate memory bandwidth, increased remote access latency |
+| `node-local` | Threads pinned to same node as allocation | Baseline NUMA-aware configuration |
+
+### Experimental Matrix Extension
+
+Each (map, scenario, threads, size) combination runs with:
+- `pinning=compact` (default)
+- `pinning=spread` (if numa_nodes > 1)
+
+This adds NUMA topology as an **independent variable** rather than uncontrolled confound.
+
+### NUMA Metadata in CSV
+
+```
+numa_nodes,pinning_strategy,allocation_node
+```
+
+## Cache Hierarchy Analysis
+
+### Objective
+
+Distinguish cache-bound vs memory-bound performance characteristics.
+
+### Working Set Size Classification
+
+| Map Size | Working Set | Expected Behavior |
+|----------|-------------|-------------------|
+| 100K | ~1.6 MB | L3-resident (cache-bound) |
+| 1M | ~16 MB | Partial L3, some misses |
+| 10M | ~160 MB | Memory-bound |
+
+### Cache-Aware Analysis
+
+The benchmark reports **normalized throughput**:
+- `throughput_per_cache_miss`: ops/sec normalized by LLC miss rate (if perf counters available)
+- `cache_efficiency`: ratio of L3-resident (100K) to memory-bound (10M) throughput
+
+### Hardware Counter Collection (Optional)
+
+```bash
+# Run with perf stat for cache analysis
+perf stat -e LLC-load-misses,LLC-loads ./bench-phmap --scenario read_only --threads 8 --mapsize 1000000
+```
+
+### Analysis Approach
+
+1. **Cache-bound regime (100K)**: Measures hash computation + lock overhead
+2. **Memory-bound regime (10M)**: Measures memory access patterns + prefetching effectiveness
+3. **Transition regime (1M)**: Mixed behavior, implementation-dependent
+
+Results should be interpreted with cache hierarchy in mind:
+- High throughput at 100K but low at 10M → indicates cache-unfriendly memory access patterns
+- Consistent scaling across sizes → indicates cache-oblivious implementation
+
 ### Output Format
 
 **Per-trial CSV:**
@@ -370,6 +530,8 @@ add_subdirectory(cpp-impl)
 - [ ] `common/hasher.h` - Custom fast hasher
 - [ ] `common/zipf.h` - Zipfian distribution generator
 - [ ] `common/worker.h` - Thread worker infrastructure with barriers
+- [ ] `common/memory.h` - RSS measurement utilities
+- [ ] `common/numa.h` - NUMA topology detection and pinning strategies
 
 ### Phase 3: C++ Benchmarks
 
@@ -412,6 +574,7 @@ target_link_libraries(bench-libcuckoo pthread)
 - [ ] Implement `hasher.rs` - verify hash matches C++
 - [ ] Implement `affinity.rs` - thread pinning via libc
 - [ ] Implement `scenarios.rs` - all workload scenarios
+- [ ] Implement `memory.rs` - RSS measurement utilities
 - [ ] Implement `main.rs` - CLI and orchestration
 
 **Cargo.toml:**
@@ -475,11 +638,14 @@ diff cpp_prng.txt rust_prng.txt
 | Scenarios | 1-7 (with sub-variants) | ~10 |
 | Map sizes | 100K, 1M, 10M | 3 |
 | Thread counts | 1, 2, 4, 8, 16, 32, N_cores | ~6 |
+| Pinning strategies | compact, spread | 2 |
 | Repetitions | 40 | 40 |
 
-**Total trials:** 3 × 10 × 3 × 6 × 40 = **21,600**
+**Total trials:** 3 × 10 × 3 × 6 × 2 × 40 = **43,200**
 
-**Estimated runtime:** ~2-3 seconds/trial → **12-18 hours**
+**Estimated runtime:** ~2-3 seconds/trial → **24-36 hours**
+
+**Note:** On single-socket systems, pinning strategy dimension collapses to 1, reducing to ~21,600 trials.
 
 ## Risk Mitigation
 
@@ -510,3 +676,58 @@ Before running experiments:
 - [ ] No competing processes running
 - [ ] Sufficient disk space for results (~1GB)
 - [ ] System metadata captured (CPU, kernel, memory, compiler versions)
+
+## Limitations & Scope
+
+### Scope Boundaries
+
+This benchmark measures **throughput and latency under controlled synthetic workloads**. The following are explicitly out of scope:
+
+| Out of Scope | Rationale |
+|--------------|-----------|
+| Memory pressure / OOM behavior | Controlled environment, sufficient RAM assumed |
+| Long-running stability (>1 hour) | Focus on steady-state performance, not degradation |
+| Application-specific workloads | Synthetic workloads enable controlled comparison |
+
+### Methodological Limitations
+
+1. **Cache Hierarchy Dependence**
+   - 100K entries (~1.6 MB) fits entirely in L3 cache on most modern CPUs
+   - Results at this size primarily reflect cache hit performance
+   - Analysis must distinguish cache-bound (100K) from memory-bound (10M) regimes
+   - **Mitigation**: Report results by map size category with explicit cache analysis
+
+2. **Synthetic Workload Generalization**
+   - Real workloads have complex access patterns not captured by uniform/Zipfian distributions
+   - Results apply to workloads with similar statistical properties
+   - **Mitigation**: Multiple scenarios (7+) covering diverse access patterns
+
+3. **Platform Specificity**
+   - Results are specific to x86_64 Linux with tested CPU microarchitecture
+   - ARM, other OSes, or different CPU generations may show different characteristics
+   - **Mitigation**: Document exact hardware/software configuration in metadata
+
+4. **Statistical Assumptions**
+   - CLT-based 95% CI assumes approximately normal distribution of sample means
+   - Valid for throughput (aggregated over 1M ops); latency distributions may be heavy-tailed
+   - **Mitigation**: R=40 repetitions provides robust estimation; report full latency CDFs
+
+### Controlled Variables
+
+The following are held constant to enable fair comparison:
+
+| Variable | Value | Notes |
+|----------|-------|-------|
+| PRNG | xorshift64* | Identical implementation verified |
+| Hash function | FxHash-style multiply | Identical constant verified |
+| Key/Value types | uint64_t / u64 | 16 bytes per entry |
+| Operations per trial | 1,000,000 | Fixed workload size |
+| Warm-up operations | 100,000 | Discarded from measurement |
+| Memory allocator | System default | Documented in metadata |
+
+### Interpretation Guidelines
+
+- Compare implementations **within** the same (scenario, map_size, thread_count, pinning) configuration
+- Cache-bound (100K) and memory-bound (10M) results measure different aspects of implementation quality
+- NUMA effects visible by comparing `compact` vs `spread` pinning strategies
+- Memory efficiency (bytes/entry) is independent of throughput and should be reported separately
