@@ -35,17 +35,18 @@ datafile = "results/aggregated/summary.csv"
 
 # Plot using awk to filter data
 # Note: Uses external filtering since gnuplot's built-in filtering is limited
+# We pipe to sort -n -k1 to ensure threads are sorted numerically to prevent line folding
 
 plot \
-    sprintf("< awk -F, 'NR>1 && $1==\"parallel-hashmap\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6, $10/1e6, $11/1e6}' %s", scenario, mapsize, pinning, datafile) \
+    sprintf("< awk -F, 'NR>1 && $1==\"parallel-hashmap\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6, $10/1e6, $11/1e6}' %s | sort -n -k1", scenario, mapsize, pinning, datafile) \
         using 1:2:3:4 with yerrorbars ls 1 title "parallel-hashmap", \
-    sprintf("< awk -F, 'NR>1 && $1==\"parallel-hashmap\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6}' %s", scenario, mapsize, pinning, datafile) \
+    sprintf("< awk -F, 'NR>1 && $1==\"parallel-hashmap\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6}' %s | sort -n -k1", scenario, mapsize, pinning, datafile) \
         using 1:2 with lines ls 1 notitle, \
-    sprintf("< awk -F, 'NR>1 && $1==\"libcuckoo\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6, $10/1e6, $11/1e6}' %s", scenario, mapsize, pinning, datafile) \
+    sprintf("< awk -F, 'NR>1 && $1==\"libcuckoo\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6, $10/1e6, $11/1e6}' %s | sort -n -k1", scenario, mapsize, pinning, datafile) \
         using 1:2:3:4 with yerrorbars ls 2 title "libcuckoo", \
-    sprintf("< awk -F, 'NR>1 && $1==\"libcuckoo\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6}' %s", scenario, mapsize, pinning, datafile) \
+    sprintf("< awk -F, 'NR>1 && $1==\"libcuckoo\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6}' %s | sort -n -k1", scenario, mapsize, pinning, datafile) \
         using 1:2 with lines ls 2 notitle, \
-    sprintf("< awk -F, 'NR>1 && $1==\"dashmap\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6, $10/1e6, $11/1e6}' %s", scenario, mapsize, pinning, datafile) \
+    sprintf("< awk -F, 'NR>1 && $1==\"dashmap\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6, $10/1e6, $11/1e6}' %s | sort -n -k1", scenario, mapsize, pinning, datafile) \
         using 1:2:3:4 with yerrorbars ls 3 title "DashMap", \
-    sprintf("< awk -F, 'NR>1 && $1==\"dashmap\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6}' %s", scenario, mapsize, pinning, datafile) \
+    sprintf("< awk -F, 'NR>1 && $1==\"dashmap\" && $2==\"%s\" && $4==%d && $5==\"%s\" {print $3, $7/1e6}' %s | sort -n -k1", scenario, mapsize, pinning, datafile) \
         using 1:2 with lines ls 3 notitle
