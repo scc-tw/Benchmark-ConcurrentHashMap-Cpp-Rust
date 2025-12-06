@@ -1,0 +1,22 @@
+{
+    "timestamp": "2025-12-06T06:11:36+08:00",
+    "hostname": "scc-Taipei",
+    "kernel": "6.17.9-arch1-1",
+    "cpu_model": "13th Gen Intel(R) Core(TM) i5-13500",
+    "cpu_cores": 20,
+    "cpu_threads": 20,
+    "memory_gb": 31,
+    "numa_nodes": 1,
+    "gcc_version": "g++ (GCC) 15.2.1 20251112",
+    "rustc_version": "rustc 1.91.1 (ed61e7d7e 2025-11-07) (Arch Linux rust 1:1.91.1-2)",
+    "cpu_governor": "performance",
+    "experiment_config": {
+        "implementations": "phmap libcuckoo dashmap",
+        "scenarios": "insert_only read_only read_majority_99 read_majority_95 balanced zipfian resize_stress sequential_keys random_keys",
+        "map_sizes": "100000 1000000 10000000",
+        "thread_counts": "1 2 4 8 16 32",
+        "pinning_strategies": "compact spread",
+        "repeats": 40,
+        "base_seed": 42
+    }
+}
