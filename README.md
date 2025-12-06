@@ -541,12 +541,60 @@ All artifacts saved for reproducibility:
 
 ## License
 
-[Specify license - TODO]
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+This project is licensed under the **GNU General Public License v3.0 (GPLv3)**.
+
+### What this means:
+
+- **Freedom to use**: You can use this software for any purpose
+- **Freedom to study**: You can examine the source code and modify it
+- **Freedom to share**: You can redistribute copies
+- **Freedom to improve**: You can distribute modified versions
+
+### Key requirements:
+
+- Source code must be made available when distributing the software
+- Modifications must be released under GPLv3
+- Changes must be documented
+- License and copyright notices must be preserved
+
+See the [LICENSE.txt](LICENSE.txt) file for the full license text, or visit the [GNU GPLv3 official page](https://www.gnu.org/licenses/gpl-3.0.en.html).
 
 ## Citation
 
-If you use this benchmark framework in academic work, please cite:
+If you use this benchmark framework in academic work, research, or publications, please cite:
 
+### BibTeX
+
+```bibtex
+@software{yang2025concurrent_hashmap_benchmark,
+  author       = {Yang, Chih-Hsuan},
+  title        = {Concurrent HashMap Benchmarks: Rust vs C++},
+  year         = {2025},
+  publisher    = {GitHub},
+  url          = {https://github.com/scc-tw/Benchmark-ConcurrentHashMap-Cpp-Rust},
+  note         = {A statistically rigorous performance comparison of DashMap (Rust),
+                  parallel-hashmap, and libcuckoo (C++) concurrent hash map implementations}
+}
 ```
-[Citation format - TODO after publication]
-```
+
+### APA Style
+
+Yang, C.-H. (2025). *Concurrent HashMap Benchmarks: Rust vs C++* [Computer software]. GitHub. https://github.com/scc-tw/Benchmark-ConcurrentHashMap-Cpp-Rust
+
+### Plain Text
+
+Chih-Hsuan Yang (scc). (2025). Concurrent HashMap Benchmarks: Rust vs C++. Available at: https://github.com/scc-tw/Benchmark-ConcurrentHashMap-Cpp-Rust
+
+### Author
+
+**Chih-Hsuan Yang (scc)**
+- GitHub: [https://github.com/scc-tw](https://github.com/scc-tw)
+
+### Acknowledgments
+
+This benchmark framework builds upon the following excellent open-source projects:
+- [DashMap](https://github.com/xacrimon/dashmap) by Joel Wejdenstål
+- [parallel-hashmap](https://github.com/greg7mdp/parallel-hashmap) by Gregory Popovitch
+- [libcuckoo](https://github.com/efficient/libcuckoo) by the Efficient Computing Group at CMU
