@@ -1,8 +1,6 @@
 #pragma once
 
 #include "config.h"
-#include "prng.h"
-#include "timing.h"
 
 #include <pthread.h>
 #include <sched.h>

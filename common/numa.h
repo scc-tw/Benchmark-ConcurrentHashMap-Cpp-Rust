@@ -5,7 +5,6 @@
 #include <fstream>
 #include <sstream>
 #include <dirent.h>
-#include <cstdint>
 #include <algorithm> // for std::max
 
 namespace bench {

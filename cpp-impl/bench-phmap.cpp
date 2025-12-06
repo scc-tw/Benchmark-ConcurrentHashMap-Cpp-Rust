@@ -16,7 +16,6 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <numeric>
 #include <pthread.h>
 
 using namespace bench;

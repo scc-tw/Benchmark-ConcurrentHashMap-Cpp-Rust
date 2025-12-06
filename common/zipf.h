@@ -2,7 +2,6 @@
 
 #include "prng.h"
 #include <cmath>
-#include <vector>
 #include <cstdint>
 
 namespace bench {
