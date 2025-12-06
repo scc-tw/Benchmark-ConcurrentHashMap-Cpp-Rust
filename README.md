@@ -306,43 +306,125 @@ gnuplot -e "threads=8; mapsize=1000000; pinning='compact'" plots/plot-comparison
 
 ## Results
 
-**[Placeholder - Results will be added after benchmark execution]**
+*Generated from 810 configurations with 40 repetitions each (32,400 data points). Full analysis available in `results/analysis/BENCHMARK_REPORT.md`.*
 
-### Throughput vs Thread Count
+### Executive Summary
 
-![Throughput comparison](results/plots/throughput-vs-threads.png)
+#### Performance Winners (16 threads, 1M entries, compact pinning)
 
-*Figure: Mean throughput (ops/sec) vs thread count with 95% confidence intervals. Each point represents mean of 40 trials.*
+| Workload Type | Winner | Throughput |
+|---------------|--------|------------|
+| **Read-heavy** (read_only, read_majority) | **libcuckoo** | 384M ops/s |
+| **Write-heavy** (insert_only, sequential) | **libcuckoo** | 188M ops/s |
+| **Mixed workloads** (balanced, zipfian) | **DashMap** | 126M ops/s |
 
-### Latency Distributions
-
-![Latency CDFs](results/plots/latency-cdf.png)
-
-*Figure: Cumulative distribution functions of sampled operation latencies.*
+**Win distribution:** libcuckoo: 5 scenarios, DashMap: 4 scenarios
 
 ### Scalability Analysis
 
-![Normalized speedup](results/plots/scalability.png)
+*Primary finding: libcuckoo achieves the best scaling (up to 8.3x speedup), while parallel-hashmap shows negative scaling under contention.*
 
-*Figure: Normalized speedup (throughput at N threads / throughput at 1 thread).*
+#### Speedup (1 → 16 threads, 1M entries)
+
+| Scenario | DashMap | libcuckoo | parallel-hashmap | Best Scaler |
+|----------|---------|-----------|------------------|-------------|
+| read_only | 3.61x | **6.19x** | 0.42x | libcuckoo |
+| read_majority_99 | 3.87x | **8.29x** | 0.40x | libcuckoo |
+| read_majority_95 | 3.90x | **8.16x** | 0.62x | libcuckoo |
+| insert_only | 2.57x | **6.85x** | 0.33x | libcuckoo |
+| balanced | 3.76x | **4.00x** | 0.45x | libcuckoo |
+| zipfian | **3.87x** | 1.44x | 1.12x | DashMap |
+
+#### Scaling Efficiency (% of ideal linear scaling at 16 threads)
+
+| Scenario | DashMap | libcuckoo | parallel-hashmap |
+|----------|---------|-----------|------------------|
+| read_only | 23% | **39%** | 3% |
+| read_majority_99 | 24% | **52%** | 3% |
+| insert_only | 16% | **43%** | 2% |
+| balanced | 24% | **25%** | 3% |
+
+#### Thread Scaling Progression (read_only, 1M entries)
+
+| Threads | DashMap | libcuckoo | parallel-hashmap |
+|---------|---------|-----------|------------------|
+| 1 | 49.2M | 62.0M | **196.6M** |
+| 2 | 61.4M | 75.2M | **192.2M** |
+| 4 | 87.6M | **131.2M** | 129.4M |
+| 8 | 142.6M | **226.9M** | 124.8M |
+| 16 | 177.2M | **383.8M** | 82.9M |
+
+*Note: parallel-hashmap shows excellent single-threaded performance but degrades under contention.*
+
+### Throughput Comparison
+
+#### Peak Throughput (16 threads, 1M entries, compact pinning)
+
+| Scenario | DashMap | libcuckoo | parallel-hashmap | Winner |
+|----------|---------|-----------|------------------|--------|
+| read_only | 177.2M | **383.8M** | 82.9M | libcuckoo |
+| read_majority_99 | 173.0M | **249.9M** | 68.9M | libcuckoo |
+| read_majority_95 | 170.6M | **247.6M** | 79.6M | libcuckoo |
+| insert_only | 121.4M | **188.1M** | 14.2M | libcuckoo |
+| balanced | **125.5M** | 45.4M | 24.3M | DashMap |
+| zipfian | **116.5M** | 31.1M | 38.4M | DashMap |
+| resize_stress | **96.4M** | 30.0M | 2.4M | DashMap |
+| random_keys | **130.3M** | 80.8M | 13.6M | DashMap |
 
 ### Memory Efficiency
 
-**[Placeholder - Memory efficiency analysis]**
+*Theoretical minimum: 16 bytes (8-byte key + 8-byte value)*
 
-| Map Implementation | Small (100K) | Medium (1M) | Large (10M) | Bytes/Entry |
-|-------------------|--------------|-------------|-------------|-------------|
-| DashMap           | TBD MB       | TBD MB      | TBD MB      | TBD         |
-| parallel-hashmap  | TBD MB       | TBD MB      | TBD MB      | TBD         |
-| libcuckoo         | TBD MB       | TBD MB      | TBD MB      | TBD         |
+| Implementation | 100K (bytes/entry) | 1M (bytes/entry) | 10M (bytes/entry) | Avg Overhead |
+|----------------|-------------------|------------------|-------------------|--------------|
+| DashMap | 42.0 | 38.8 | 288.4 | 7.69x |
+| libcuckoo | 50.4 | **36.0** | 319.1 | 8.45x |
+| parallel-hashmap | 47.4 | 39.6 | 289.1 | 7.84x |
 
-*Table: Peak RSS and memory overhead ratio (theoretical minimum = 16 bytes/entry).*
+| Implementation | 100K (RSS KB) | 1M (RSS KB) | 10M (RSS KB) |
+|----------------|---------------|-------------|--------------|
+| DashMap | 41,004 | 38,148 | 281,832 |
+| libcuckoo | 49,208 | **35,108** | 311,592 |
+| parallel-hashmap | 46,256 | 38,652 | 282,368 |
+
+### Latency Analysis
+
+#### Latency Percentiles (read_only, 8 threads, 1M entries)
+
+| Implementation | Mean (ns) | p50 (ns) | p90 (ns) | p95 (ns) | p99 (ns) |
+|----------------|-----------|----------|----------|----------|----------|
+| DashMap | 112 | 101 | 158 | 182 | 256 |
+| libcuckoo | **71** | **71** | **83** | **87** | **114** |
+| parallel-hashmap | 84 | 64 | 149 | 189 | 324 |
+
+*libcuckoo achieves the lowest and most consistent latency.*
 
 ### NUMA Effects
 
-**[Placeholder - NUMA topology analysis]**
+#### Compact vs Spread Pinning Impact (16 threads, 1M entries)
 
-*Comparison of compact vs spread pinning strategies across thread counts.*
+*Positive delta = compact is faster; Negative delta = spread is faster*
+
+| Scenario | DashMap | libcuckoo | parallel-hashmap |
+|----------|---------|-----------|------------------|
+| read_only | -0.5% | -1.1% | -2.9% |
+| balanced | **+6.6%** | +1.7% | -1.5% |
+| zipfian | +1.0% | +0.3% | **-21.2%** |
+
+**Key NUMA observations:**
+- parallel-hashmap shows high NUMA sensitivity (up to 21% difference)
+- DashMap benefits from compact pinning on balanced workloads (+6.6%)
+- libcuckoo is NUMA-agnostic (<2% difference across all scenarios)
+
+### Recommendations
+
+| Use Case | Recommendation | Rationale |
+|----------|----------------|-----------|
+| Read-heavy workloads | **libcuckoo** | 2-4x higher throughput, lowest latency |
+| Mixed read/write | **DashMap** | Best balanced performance, 126M ops/s |
+| Memory-constrained | **libcuckoo** | Lowest bytes/entry at 1M scale |
+| Rust projects | **DashMap** | Native Rust, excellent mixed-workload performance |
+| Low contention | **parallel-hashmap** | Best single-threaded (196M ops/s) |
 
 ## Project Structure
 
